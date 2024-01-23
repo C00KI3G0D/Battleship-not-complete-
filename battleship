@@ -1,0 +1,360 @@
+import kotlin.random.Random
+
+const val OP_SET_BOARD = 1
+const val OP_PLAY = 2
+const val OP_SAVE = 3
+const val OP_LOAD = 4
+const val OP_EXIT = 0
+const val PLAYER_MOVE = "X"
+const val COMPUTER_MOVE = "O"
+const val MIN_BOARD_SIZE = 3
+const val MAX_BOARD_SIZE = 10
+
+fun displayMenu(): Int {
+    println("> > Battleship < <")
+    println("1 - Set Board and Ships")
+    println("2 - Play")
+    println("3 - Save")
+    println("4 - Load")
+    println("0 - Exit")
+
+    print("Choose an option: ")
+
+    return readLine()?.toIntOrNull() ?: -1
+}
+
+interface BaseBoard {
+    val rows: Int
+    val columns: Int
+    val cells: MutableList<MutableList<String>>
+}
+
+data class Board(
+    override val rows: Int,
+    override val columns: Int,
+    override val cells: MutableList<MutableList<String>>
+) : BaseBoard
+
+data class HiddenBoard(
+    override val rows: Int,
+    override val columns: Int,
+    override val cells: MutableList<MutableList<String>>
+) : BaseBoard
+
+fun initializeHiddenBoard(hiddenBoard: HiddenBoard) {
+    for (i in 0 until hiddenBoard.rows) {
+        val row = mutableListOf<String>()
+        for (j in 0 until hiddenBoard.columns) {
+            row.add(" ")
+        }
+        hiddenBoard.cells.add(row)
+    }
+}
+
+fun buildTable(board: Board): HiddenBoard {
+    val hiddenBoard = HiddenBoard(board.rows, board.columns, mutableListOf())
+    initializeHiddenBoard(hiddenBoard)
+
+    for (i in 0 until board.rows) {
+        for (j in 0 until board.columns) {
+            if (board.cells[i][j] == "*") {
+                hiddenBoard.cells[i][j] = " "
+            } else {
+                hiddenBoard.cells[i][j] = board.cells[i][j]
+            }
+        }
+    }
+
+    return hiddenBoard
+}
+
+fun HiddenBoard.copyToBoard(): Board {
+    val newBoard = Board(this.rows, this.columns, mutableListOf())
+    for (i in 0 until this.rows) {
+        val row = mutableListOf<String>()
+        for (j in 0 until this.columns) {
+            row.add(this.cells[i][j])
+        }
+        newBoard.cells.add(row)
+    }
+    return newBoard
+}
+
+fun initializeBoard(board: Board) {
+    for (i in 0 until board.rows) {
+        val row = mutableListOf<String>()
+        for (j in 0 until board.columns) {
+            row.add(" ")
+        }
+        board.cells.add(row)
+    }
+}
+
+fun defineBoardSize(): Pair<Int, Int> {
+    print("Enter the number of rows for the board: ")
+    val rows = readLine()?.toIntOrNull() ?: 0
+
+    print("Enter the number of columns for the board: ")
+    val columns = readLine()?.toIntOrNull() ?: 0
+
+    return rows to columns
+}
+
+fun defineCoordinates(board: Board, remainingSubmarines: Int): Boolean {
+    println("Enter coordinates (A1, B2, etc.): ")
+    val coordinates = readLine()?.toUpperCase()
+
+    val regex = Regex("[A-Z]\\d+")
+    val validCoordinates = coordinates != null && coordinates.matches(regex)
+
+    if (validCoordinates) {
+        val submarinePositions = mutableListOf<Pair<Int, Int>>()
+
+        for (coord in coordinates!!) {
+            if (coord.isLetter()) {
+                val column = coord - 'A'
+                submarinePositions.add(column to 0)
+            } else if (coord.isDigit()) {
+                val row = coord.toString().toInt() - 1
+                submarinePositions[submarinePositions.size - 1] = submarinePositions.last().first to row
+            }
+        }
+
+        if (submarinePositions.all { isValidPosition(board, it.first, it.second) }) {
+            for (position in submarinePositions) {
+                board.cells[position.second][position.first] = "*"
+            }
+            displayEmptyBoard(board)
+            if (remainingSubmarines > 1) {
+                return defineCoordinates(board, remainingSubmarines - 1)
+            }
+            return true
+        } else {
+            println("Submarine positions are not completely surrounded by water. Try again.")
+            return defineCoordinates(board, remainingSubmarines)
+        }
+    } else {
+        println("Invalid coordinates. Use the correct format (A1, B2, etc.).")
+    }
+    return false
+}
+
+fun defineComputerCoordinates(boardPlayer: Board, boardComputer: Board, remainingSubmarines: Int): Boolean {
+    println("The computer is defining submarine coordinates...")
+
+    val submarinePositions = mutableListOf<Pair<Int, Int>>()
+
+    repeat(remainingSubmarines) {
+        var column: Int
+        var row: Int
+
+        do {
+            column = Random.nextInt(boardComputer.columns)
+            row = Random.nextInt(boardComputer.rows)
+        } while (!isEmptyPosition(boardComputer, column, row) || !isEmptyPosition(boardPlayer, column, row))
+
+        submarinePositions.add(column to row)
+        boardComputer.cells[row][column] = "*"
+    }
+
+    displayEmptyBoard(boardComputer)
+
+    return true
+}
+
+fun isValidPosition(board: Board, column: Int, row: Int): Boolean {
+    return isEmptyPosition(board, column, row) &&
+            isEmptyPosition(board, column - 1, row) &&
+            isEmptyPosition(board, column + 1, row) &&
+            isEmptyPosition(board, column, row - 1) &&
+            isEmptyPosition(board, column, row + 1)
+}
+
+fun isEmptyPosition(board: Board, column: Int, row: Int): Boolean {
+    return column in 0 until board.columns &&
+            row in 0 until board.rows &&
+            board.cells[row][column] == " "
+}
+
+fun displayEmptyBoard(board: Board) {
+    println("Graphical representation of the board:")
+
+    print("    ")
+    for (i in 1..board.columns) {
+        print(String.format("|   %c   ", 'A' + i - 1))
+    }
+    println("|")
+
+    print("   +")
+    repeat(board.columns) {
+        print("-------+")
+    }
+    println()
+
+    for (i in 1..board.rows) {
+        print(String.format("%2d |", i))
+        repeat(board.columns) {
+            print("       |")
+        }
+        println()
+
+        print("   +")
+        repeat(board.columns) {
+            print("-------+")
+        }
+        println()
+    }
+}
+
+fun displayBoard(board: Board) {
+    println("Current state of the board:")
+
+    print("    ")
+    for (i in 1..board.columns) {
+        print(String.format("|   %c   ", 'A' + i - 1))
+    }
+    println("|")
+
+    print("   +")
+    repeat(board.columns) {
+        print("-------+")
+    }
+    println()
+
+    for (i in 0 until board.rows) {
+        print(String.format("%2d |", i + 1))
+        for (j in 0 until board.columns) {
+            print(String.format("|   %s   ", board.cells[i][j]))
+        }
+        println("|")
+
+        print("   +")
+        repeat(board.columns) {
+            print("-------+")
+        }
+        println()
+    }
+}
+
+    fun computerMove(board: Board) {
+    val column = Random.nextInt(board.columns)
+    val row = Random.nextInt(board.rows)
+
+    if (isEmptyPosition(board, column, row)) {
+        board.cells[row][column] = COMPUTER_MOVE
+        println("The computer made its move.")
+        displayBoard(board)
+    } else {
+        computerMove(board)
+    }
+}
+
+fun checkVictory(board: Board, player: String): Boolean {
+    val moveType = if (player == "Computer") COMPUTER_MOVE else PLAYER_MOVE
+    return board.cells.flatten().count { it == moveType } == 2
+}
+
+fun generateTwoDimensionalArray(board: Board): Array<Array<String>> {
+    return board.cells.map { it.toTypedArray() }.toTypedArray()
+}
+
+fun displayTwoDimensionalArray(array: Array<Array<String>>) {
+    for (row in array) {
+        println(row.joinToString(" "))
+    }
+}
+
+fun displayInitialBoard(board: Board) {
+    println("Graphical representation of the initial board:")
+
+    print("    ")
+    for (i in 1..board.columns) {
+        print(String.format("|   %c   ", 'A' + i - 1))
+    }
+    println("|")
+
+    print("   +")
+    repeat(board.columns) {
+        print("-------+")
+    }
+    println()
+
+    for (i in 1..board.rows) {
+        print(String.format("%2d |", i))
+        repeat(board.columns) {
+            print("       |")
+        }
+        println()
+
+        print("   +")
+        repeat(board.columns) {
+            print("-------+")
+        }
+        println()
+    }
+}
+
+fun main() {
+    var choice: Int
+    var playerBoard = Board(0, 0, mutableListOf())
+    var hiddenPlayerBoard = HiddenBoard(0, 0, mutableListOf())
+    var computerBoard = Board(0, 0, mutableListOf())
+
+    do {
+        choice = displayMenu()
+
+        when (choice) {
+            OP_SET_BOARD -> {
+                val (rows, columns) = defineBoardSize()
+
+                playerBoard = Board(rows, columns, mutableListOf())
+                computerBoard = Board(rows, columns, mutableListOf())
+                hiddenPlayerBoard = HiddenBoard(rows, columns, mutableListOf())
+
+                initializeBoard(playerBoard)
+                initializeBoard(computerBoard)
+                initializeHiddenBoard(hiddenPlayerBoard)
+
+                displayInitialBoard(playerBoard)
+
+                val playerCoordinates = defineCoordinates(playerBoard, 2)
+                val computerCoordinates = defineComputerCoordinates(playerBoard, computerBoard, 2)
+
+                if (playerCoordinates && computerCoordinates) {
+                    println("Two-Dimensional Array of Player's Board:")
+                    displayTwoDimensionalArray(generateTwoDimensionalArray(playerBoard))
+                }
+            }
+
+            OP_PLAY -> {
+                println("Option 2 - Play")
+
+                makeMove(playerBoard, PLAYER_MOVE, "1")
+
+                println("Player's Board:")
+                displayTwoDimensionalArray(generateTwoDimensionalArray(hiddenPlayerBoard))
+
+                println("Two-Dimensional Array of Player's Board:")
+                displayTwoDimensionalArray(
+                    generateTwoDimensionalArray(hiddenPlayerBoard.copyToBoard())
+                )
+
+                if (checkVictory(playerBoard, "Player 1")) {
+                    println("Player 1 won!")
+                    break
+                }
+
+                computerMove(computerBoard)
+
+                println("Two-Dimensional Array of Computer's Board:")
+                displayTwoDimensionalArray(generateTwoDimensionalArray(computerBoard))
+
+                if (checkVictory(computerBoard, "Computer")) {
+                    println("Computer won!")
+                    break
+                }
+            }
+        }
+
+    } while (choice != OP_EXIT)
+}
